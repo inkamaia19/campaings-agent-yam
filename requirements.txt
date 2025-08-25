@@ -1,0 +1,13 @@
+# --- LangChain Stack Moderno ---
+langchain>=0.2.0
+langgraph>=0.1.0
+langchain-ollama>=0.1.0
+pydantic>=2.0.0
+
+# --- GUI Framework ---
+streamlit>=1.30.0
+
+# --- Otras dependencias ---
+pandas
+python-dotenv
+psycopg2-binary
