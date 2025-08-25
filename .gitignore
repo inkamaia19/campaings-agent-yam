@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+
+# Secrets
+.env
+*.json  # ¡Cuidado! Añade esto si tu clave de Google es un .json
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Plot outputs (si no quieres versionarlos)
+*.png
+*.jpg
