@@ -1,12 +1,11 @@
 import pandas as pd
 import psycopg2
 import settings
+import os
+import matplotlib.pyplot as plt
 
 def execute_sql_query(sql_query: str) -> pd.DataFrame:
-    """
-    Se conecta a la base de datos NeonDB (PostgreSQL), ejecuta una consulta SQL,
-    y devuelve el resultado como un DataFrame de Pandas.
-    """
+    """Se conecta a NeonDB, ejecuta SQL y devuelve un DataFrame."""
     conn = None
     try:
         print(f"\n🔌 Connecting to NeonDB...")
@@ -23,49 +22,91 @@ def execute_sql_query(sql_query: str) -> pd.DataFrame:
             conn.close()
             print("🔌 Connection closed.")
 
+# --- LÓGICA DE CÁLCULO DE MÉTRICAS REFACTORIZADA ---
+
+def _calculate_ctr(row):
+    """Calcula el CTR (Click-Through Rate) para una fila de datos."""
+    if 'clics' in row and 'impresiones' in row and row['impresiones'] > 0:
+        return (row['clics'] / row['impresiones'] * 100)
+    return 0
+
+def _calculate_cpc(row):
+    """Calcula el CPC (Costo por Clic) para una fila de datos."""
+    if 'gasto' in row and 'clics' in row and row['clics'] > 0:
+        return (row['gasto'] / row['clics'])
+    return 0
+
+def _calculate_cpa(row):
+    """Calcula el CPA (Costo por Adquisición) para una fila de datos."""
+    if 'gasto' in row and 'conversiones' in row and row['conversiones'] > 0:
+        return (row['gasto'] / row['conversiones'])
+    return 0
+
 def calculate_advanced_metrics(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Toma un DataFrame con datos de múltiples plataformas y calcula
-    métricas relevantes para cada una, añadiéndolas como nuevas columnas.
-    Esta función está inspirada en 'system_prompt_metrics'.
+    Función principal que orquesta el cálculo de todas las métricas de marketing.
     """
     if df.empty:
         return df
         
     processed_df = df.copy()
-
-    # Convertir a numérico para asegurar operaciones matemáticas
-    # Lista de todas las posibles columnas de métricas
-    metric_cols = [
-        'fa_cost', 'fa_clicks_all', 'fa_impressions', 'fa_on_facebook_leads', 'fa_website_purchases', 'fa_link_clicks',
-        'ga_cost', 'ga_clicks', 'ga_impressions', 'ga_conversions',
-        'tt_cost', 'tt_clicks', 'tt_impressions', 'tt_conversions',
-        'dv_revenue', 'dv_clicks', 'dv_impressions', 'dv_Post_Click_Conversions'
-    ]
+    
+    # Asegurar que las columnas de métricas sean numéricas
+    metric_cols = ['impresiones', 'clics', 'conversiones', 'gasto']
     for col in metric_cols:
         if col in processed_df.columns:
-            # Rellenar valores nulos con 0 antes de convertir a numérico
             processed_df[col] = pd.to_numeric(processed_df[col].fillna(0), errors='coerce')
 
-    # --- Calcular Métricas por Plataforma (si las columnas existen) ---
+    # Aplicar los cálculos y redondear
+    if 'clics' in processed_df and 'impresiones' in processed_df:
+        processed_df['ctr_%'] = processed_df.apply(_calculate_ctr, axis=1).round(2)
     
-    # Meta Ads (Facebook) - OJO: usa fa_clicks_all o fa_link_clicks según lo que te devuelva el SQL
-    if 'fa_cost' in processed_df and ('fa_clicks_all' in processed_df or 'fa_link_clicks' in processed_df):
-        click_col = 'fa_clicks_all' if 'fa_clicks_all' in processed_df else 'fa_link_clicks'
-        processed_df['fa_cpc'] = (processed_df['fa_cost'] / processed_df[click_col]).where(processed_df[click_col] > 0, 0).round(2)
-    if ('fa_clicks_all' in processed_df or 'fa_link_clicks' in processed_df) and 'fa_impressions' in processed_df:
-        click_col = 'fa_clicks_all' if 'fa_clicks_all' in processed_df else 'fa_link_clicks'
-        processed_df['fa_ctr_%'] = (processed_df[click_col] / processed_df['fa_impressions'] * 100).where(processed_df['fa_impressions'] > 0, 0).round(2)
-    if 'fa_cost' in processed_df and 'fa_website_purchases' in processed_df:
-        processed_df['fa_cpa_purchase'] = (processed_df['fa_cost'] / processed_df['fa_website_purchases']).where(processed_df['fa_website_purchases'] > 0, 0).round(2)
-
-    # Google Ads
-    if 'ga_cost' in processed_df and 'ga_clicks' in processed_df:
-        processed_df['ga_cpc'] = (processed_df['ga_cost'] / processed_df['ga_clicks']).where(processed_df['ga_clicks'] > 0, 0).round(2)
-    if 'ga_clicks' in processed_df and 'ga_impressions' in processed_df:
-        processed_df['ga_ctr_%'] = (processed_df['ga_clicks'] / processed_df['ga_impressions'] * 100).where(processed_df['ga_impressions'] > 0, 0).round(2)
-    if 'ga_cost' in processed_df and 'ga_conversions' in processed_df:
-        processed_df['ga_cpa'] = (processed_df['ga_cost'] / processed_df['ga_conversions']).where(processed_df['ga_conversions'] > 0, 0).round(2)
-
-    print("📊 Advanced metrics calculated for available platforms.")
+    if 'gasto' in processed_df and 'clics' in processed_df:
+        processed_df['cpc'] = processed_df.apply(_calculate_cpc, axis=1).round(2)
+        
+    if 'gasto' in processed_df and 'conversiones' in processed_df:
+        processed_df['cpa'] = processed_df.apply(_calculate_cpa, axis=1).round(2)
+        
+    print("📊 Advanced metrics calculated using modular functions.")
     return processed_df
+
+def generate_plot(df: pd.DataFrame, plot_info: dict) -> str:
+    """Genera un gráfico con Matplotlib y devuelve la ruta del archivo."""
+    try:
+        print(f"🎨 Generating plot: {plot_info.get('title', 'No Title')}")
+        plt.style.use('seaborn-v0_8-darkgrid')
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        plot_type = plot_info.get("plot_type", "bar")
+        x_col = plot_info.get("x_col")
+        y_col = plot_info.get("y_col")
+        title = plot_info.get("title")
+
+        if not all([x_col, y_col, title]):
+             raise ValueError("Falta información para generar el gráfico (x_col, y_col, o title).")
+        if x_col not in df.columns or y_col not in df.columns:
+            raise ValueError(f"Las columnas '{x_col}' o '{y_col}' no se encontraron en los datos.")
+
+        if plot_type == 'line':
+            ax.plot(df[x_col], df[y_col], marker='o', linestyle='-')
+        else:
+            ax.bar(df[x_col], df[y_col])
+
+        ax.set_title(title, fontsize=16)
+        ax.set_xlabel(x_col.replace('_', ' ').title(), fontsize=12)
+        ax.set_ylabel(y_col.replace('_', ' ').title(), fontsize=12)
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+
+        if not os.path.exists('outputs'):
+            os.makedirs('outputs')
+            
+        file_path = os.path.join('outputs', 'plot.png')
+        plt.savefig(file_path)
+        plt.close(fig)
+        
+        print(f"✅ Plot saved to {file_path}")
+        return file_path
+    except Exception as e:
+        print(f"❌ Error generating plot: {e}")
+        return None

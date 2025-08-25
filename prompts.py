@@ -1,64 +1,53 @@
 from langchain_core.prompts import ChatPromptTemplate
 
-# --- 1. PROMPT PARA GENERAR SQL (CON REGLAS ANTI-DUPLICADOS) ---
-SQL_GENERATION_PROMPT_TEMPLATE = """
-**Tu Misión:** Eres un experto en PostgreSQL. Tu única tarea es generar una consulta SQL válida basada en la pregunta del usuario y el esquema de las tablas.
+# --- 1. PROMPT PLANIFICADOR MAESTRO ---
+# Este único prompt reemplaza al de SQL y al de Visualización.
+PLANNER_PROMPT_TEMPLATE = """
+**Tu Misión:** Eres un analista de datos experto y planificador. Tu objetivo es crear un plan completo en formato JSON para responder la pregunta de un usuario sobre datos de marketing.
 
-**Esquema de las Tablas Disponibles:**
+**Esquema de las Tablas (Tu ÚNICA fuente de verdad):**
+- **Tabla `campañas`:** `id_campaña`, `nombre_campaña`, `objetivo`, `plataforma`, `tipo_anuncio`, `fecha_inicio`, `fecha_fin`.
+- **Tabla `rendimiento_diario`:** `fecha`, `id_campaña`, `impresiones`, `clics`, `conversiones`, `gasto`, `alcance`.
+- **Unión:** `... JOIN campañas c ON rd.id_campaña = c.id_campaña`
 
-**1. Tabla `campañas`:** Contiene información descriptiva de cada campaña.
-   - `id_campaña` (INTEGER, PRIMARY KEY): ID único de la campaña.
-   - `nombre_campaña` (VARCHAR): Nombre de la campaña.
-   - `objetivo` (VARCHAR): Objetivo (ej. 'Awareness', 'Performance').
-   - `plataforma` (VARCHAR): Plataforma (ej. 'Google Ads', 'Facebook Ads').
-   - `tipo_anuncio` (VARCHAR): Formato del anuncio.
-   - `fecha_inicio` (DATE): Fecha de inicio.
-   - `fecha_fin` (DATE): Fecha de fin.
+**Proceso de Pensamiento (Sigue estos pasos para construir tu plan):**
+1.  **Analiza la Pregunta del Usuario:** ¿Qué información fundamental se necesita? ¿Es una lista simple, una agregación, una comparación o una tendencia?
+2.  **Diseña el SQL:**
+    - Basado en tu análisis, escribe una consulta SQL PostgreSQL para obtener TODOS los datos necesarios.
+    - **Sé proactivo:** Si la pregunta implica un análisis (ej. "dame las campañas de Google"), no devuelvas solo los nombres. Trae también las métricas agregadas (`SUM(gasto) as gasto`, `SUM(clics) as clics`, etc.) y agrupa (`GROUP BY`) por las dimensiones relevantes. Esto es crucial.
+    - Si la pregunta pide una métrica calculada como CPC o CTR, asegúrate de traer las columnas base para calcularla (`gasto`, `clics`, `impresiones`).
+3.  **Diseña la Visualización (si aplica):**
+    - **¿Añade valor un gráfico?** Para tendencias y comparaciones, SÍ. Para un solo número o una lista simple, NO.
+    - Si es útil, define el `plot_type` (`line` para fechas, `bar` para categorías), las columnas `x_col` y `y_col`, y un `title` descriptivo.
+    - Las columnas `x_col` y `y_col` DEBEN existir en el SQL que diseñaste en el paso anterior.
 
-**2. Tabla `rendimiento_diario`:** Contiene las métricas diarias.
-   - `id_rendimiento` (SERIAL, PRIMARY KEY): ID único del registro.
-   - `fecha` (DATE): Día de las métricas.
-   - `id_campaña` (INTEGER): **Se conecta con `campañas.id_campaña`**.
-   - `impresiones` (INTEGER): Total de impresiones.
-   - `clics` (INTEGER): Total de clics.
-   - `conversiones` (NUMERIC): Total de conversiones.
-   - `gasto` (NUMERIC): Gasto total del día.
-   - `alcance` (INTEGER): Alcance único del día.
-
-**Reglas de Generación de SQL (¡MUY IMPORTANTES!):**
-1.  **NUNCA USES `SELECT *` CUANDO HAGAS UN `JOIN`**. Esto causa columnas duplicadas.
-2.  En su lugar, selecciona explícitamente las columnas que necesitas. Usa alias de tabla (ej. `c.nombre_campaña`, `rd.gasto`).
-3.  Para unir las tablas, usa siempre `FROM rendimiento_diario rd JOIN campañas c ON rd.id_campaña = c.id_campaña`.
-4.  La pregunta del usuario es: {question}
+**Pregunta del Usuario:**
+{question}
 
 **Instrucción Final y CRÍTICA:**
-Basado en la pregunta y el esquema, genera la consulta SQL. Tu respuesta debe ser **SOLAMENTE un objeto JSON** con una única clave "query". No escribas absolutamente nada más.
+Tu respuesta debe ser **SOLAMENTE un objeto JSON** que contenga el plan. El plan debe tener dos claves: `sql_query` (string) y `plot_info` (un objeto o `null`).
 
-Ejemplo de salida perfecta para "gasto total por nombre de campaña":
-{{"query": "SELECT c.nombre_campaña, SUM(rd.gasto) as gasto_total FROM rendimiento_diario rd JOIN campañas c ON rd.id_campaña = c.id_campaña GROUP BY c.nombre_campaña;"}}
+**Ejemplo de salida para "evolución del gasto":**
+{{"sql_query": "SELECT fecha, SUM(gasto) as gasto FROM rendimiento_diario GROUP BY fecha ORDER BY fecha;", "plot_info": {{"plot_type": "line", "x_col": "fecha", "y_col": "gasto", "title": "Evolución del Gasto Diario"}}}}
+
+**Ejemplo de salida para "cuántas campañas hay":**
+{{"sql_query": "SELECT COUNT(*) as total_campañas FROM campañas;", "plot_info": null}}
 """
-sql_generation_prompt = ChatPromptTemplate.from_template(SQL_GENERATION_PROMPT_TEMPLATE)
+planner_prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT_TEMPLATE)
 
 
-# --- 2. PROMPT PARA GENERAR INSIGHTS (Este no necesita cambios) ---
+# --- PROMPT DE INSIGHTS (Ahora más simple) ---
 INSIGHTS_GENERATION_PROMPT_TEMPLATE = """
-Eres un analista senior de marketing digital que trabaja para una empresa en Perú. Tu objetivo es brindar respuestas precisas y basadas únicamente en los datos proporcionados. Tu tarea es analizar los datos y entregar insights claros y accionables.
+Eres un analista de marketing senior. Tu objetivo es dar una respuesta clara y útil en español.
 
-Contexto:
+**Contexto:**
 - Pregunta Original del Usuario: {question}
-- Datos Resultantes del Análisis (pueden incluir métricas calculadas como CPC, CTR, CPA):
+- Datos Resultantes del Análisis:
 {data}
 
-Tu Análisis:
-Basado en los datos, tu respuesta debe seguir este formato. Usa emojis para destacar secciones.
-
-📊 **Insight Principal**
-[Resume el hallazgo más relevante. Usa viñetas si hay datos específicos (nombres de campañas, clics, impresiones, CTR, etc.). Si es necesario compara campañas o métricas destacadas.]
-
-💡 **Recomendación (si aplica)**
-[Sugiere una acción basada en los hallazg-os. Sé directo y orientado a negocio.]
- 
-📈 **Sugerencia de Siguiente Consulta**
-[Con los datos disponibles, sugiere qué otra pregunta podría hacer el usuario para profundizar.]
+**Tu Análisis:**
+- Da una respuesta directa a la pregunta del usuario basada en los datos.
+- Si hay un gráfico, menciona que ilustra los hallazgos.
+- Sé conciso y profesional.
 """
 insights_generation_prompt = ChatPromptTemplate.from_template(INSIGHTS_GENERATION_PROMPT_TEMPLATE)

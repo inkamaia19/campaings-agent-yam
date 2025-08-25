@@ -4,8 +4,8 @@ langgraph>=0.1.0
 langchain-ollama>=0.1.0
 pydantic>=2.0.0
 
-# --- GUI Framework ---
-streamlit>=1.30.0
+# --- Visualización ---
+matplotlib
 
 # --- Otras dependencias ---
 pandas

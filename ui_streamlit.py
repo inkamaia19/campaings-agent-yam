@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-# Importamos la función principal de nuestro agente desde main.py
 from main import run_agent
 
 # --- Configuración de la Página de Streamlit ---
@@ -13,44 +12,45 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # --- Lógica de la Interfaz de Chat ---
-
-# Mostrar mensajes antiguos
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        # Usamos st.container para agrupar texto y datos
         container = st.container()
-        if "insights" in message["content"]:
-            container.markdown(message["content"]["insights"])
-        if "dataframe" in message["content"] and not message["content"]["dataframe"].empty:
-            container.dataframe(message["content"]["dataframe"])
+        content_dict = message["content"]
+        if "insights" in content_dict:
+            container.markdown(content_dict["insights"])
+        if "plot_path" in content_dict and content_dict["plot_path"]:
+            container.image(content_dict["plot_path"])
+        if "dataframe" in content_dict and not content_dict["dataframe"].empty:
+            container.dataframe(content_dict["dataframe"])
 
-# Obtener la nueva pregunta del usuario
-if prompt := st.chat_input("¿Qué quieres analizar hoy?"):
-    
-    # 1. Mostrar la pregunta del usuario en la interfaz
+if prompt := st.chat_input("Pregunta sobre tendencias, comparaciones, etc."):
     st.chat_message("user").markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": {"insights": prompt, "dataframe": pd.DataFrame()}})
+    user_content = {"insights": prompt, "dataframe": pd.DataFrame(), "plot_path": None}
+    st.session_state.messages.append({"role": "user", "content": user_content})
 
-    # 2. Preparar la respuesta del bot
     with st.chat_message("assistant"):
-        with st.spinner("El agente está analizando..."):
-            
-            # 3. Llamar a la función central del agente
+        with st.spinner("El agente está planificando y ejecutando..."):
             result_dict = run_agent(prompt)
-
-            # 4. Mostrar los resultados
             response_container = st.container()
+            
             if "error" in result_dict:
-                response_container.error(f"Ocurrió un error:\n\n{result_dict['error']}")
-                # Guardar el error en el historial
-                st.session_state.messages.append({"role": "assistant", "content": {"insights": result_dict['error'], "dataframe": pd.DataFrame()}})
+                error_message = f"Ocurrió un error:\n\n{result_dict['error']}"
+                response_container.error(error_message)
+                assistant_content = {"insights": error_message, "dataframe": pd.DataFrame(), "plot_path": None}
             else:
                 insights_text = result_dict.get("insights", "No se generaron insights.")
                 df_result = result_dict.get("dataframe")
+                plot_path_result = result_dict.get("plot_path")
 
                 response_container.markdown(insights_text)
+                if plot_path_result:
+                    response_container.image(plot_path_result)
                 if df_result is not None and not df_result.empty:
                     response_container.dataframe(df_result)
                 
-                # 5. Guardar la respuesta estructurada en el historial
-                st.session_state.messages.append({"role": "assistant", "content": {"insights": insights_text, "dataframe": df_result}})
+                assistant_content = {
+                    "insights": insights_text,
+                    "dataframe": df_result,
+                    "plot_path": plot_path_result
+                }
+            st.session_state.messages.append({"role": "assistant", "content": assistant_content})
