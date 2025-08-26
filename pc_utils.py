@@ -42,14 +42,16 @@ def _calculate_cpa(row):
         return (row['gasto'] / row['conversiones'])
     return 0
 
-def calculate_advanced_metrics(df: pd.DataFrame) -> pd.DataFrame:
+def calculate_advanced_metrics(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     """
     Función principal que orquesta el cálculo de todas las métricas de marketing.
+    AHORA DEVUELVE: un DataFrame procesado Y un log de las fórmulas usadas.
     """
     if df.empty:
-        return df
+        return df, []
         
     processed_df = df.copy()
+    calculation_log = [] # ¡NUEVO! Aquí guardaremos las fórmulas.
     
     # Asegurar que las columnas de métricas sean numéricas
     metric_cols = ['impresiones', 'clics', 'conversiones', 'gasto']
@@ -57,18 +59,23 @@ def calculate_advanced_metrics(df: pd.DataFrame) -> pd.DataFrame:
         if col in processed_df.columns:
             processed_df[col] = pd.to_numeric(processed_df[col].fillna(0), errors='coerce')
 
-    # Aplicar los cálculos y redondear
+    # Aplicar los cálculos y registrar las fórmulas
     if 'clics' in processed_df and 'impresiones' in processed_df:
         processed_df['ctr_%'] = processed_df.apply(_calculate_ctr, axis=1).round(2)
+        calculation_log.append("`ctr_%` = (`clics` / `impresiones`) * 100")
     
     if 'gasto' in processed_df and 'clics' in processed_df:
         processed_df['cpc'] = processed_df.apply(_calculate_cpc, axis=1).round(2)
+        calculation_log.append("`cpc` = `gasto` / `clics`")
         
     if 'gasto' in processed_df and 'conversiones' in processed_df:
         processed_df['cpa'] = processed_df.apply(_calculate_cpa, axis=1).round(2)
+        calculation_log.append("`cpa` = `gasto` / `conversiones`")
         
-    print("📊 Advanced metrics calculated using modular functions.")
-    return processed_df
+    if calculation_log:
+        print(f"📊 Advanced metrics calculated: {', '.join(calculation_log)}")
+    
+    return processed_df, calculation_log
 
 def generate_plot(df: pd.DataFrame, plot_info: dict) -> str:
     """Genera un gráfico con Matplotlib y devuelve la ruta del archivo."""

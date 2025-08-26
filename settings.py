@@ -9,7 +9,8 @@ if not DATABASE_URI:
     raise ValueError("ERROR: No se encontró la variable DATABASE_URI en el archivo .env.")
 
 # --- Configuración del Modelo de Lenguaje ÚNICO ---
-# Toda la aplicación usará este modelo.
-OLLAMA_MODEL_NAME = "llama3.2:3b"
+# Usando un modelo más potente para mayor fiabilidad.
+# Asegúrate de que este nombre coincide 100% con el de 'ollama list'.
+OLLAMA_MODEL_NAME = "gemma3:4b"
 
 print(f"✅ Settings loaded. Using single model: {OLLAMA_MODEL_NAME}. Ready to connect to NeonDB.")
