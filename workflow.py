@@ -25,7 +25,7 @@ class Plan(BaseModel):
 
 # 2. Definir los nodos del flujo
 def generate_plan_node(state: GraphState):
-    """Genera, VALIDA y LIMPIA el plan de acción completo."""
+    """Genera y VALIDA el plan de acción completo."""
     print(f"--- 1. GENERANDO PLAN DE ACCIÓN (con {settings.OLLAMA_MODEL_NAME}) ---")
     question = state["question"]
     structured_llm = ChatOllama(model=settings.OLLAMA_MODEL_NAME, format="json", temperature=0).with_structured_output(Plan)
@@ -33,26 +33,15 @@ def generate_plan_node(state: GraphState):
     plan_model = chain.invoke({"question": question})
     plan = plan_model.dict()
 
-    # --- SUPERVISOR DE PLANES (POST-PROCESAMIENTO) ---
     plot_info = plan.get("plot_info")
     if plot_info:
         sql_query = plan.get("sql_query", "").lower()
         x_col = plot_info.get("x_col")
         y_col = plot_info.get("y_col")
-        title = plot_info.get("title")
-
-        # Regla 1: Si el gráfico está incompleto, se descarta.
-        if not all([x_col, y_col, title]):
-            print(f"⚠️ SUPERVISOR: Plan de gráfico incompleto. Descartando.")
+        if not all([x_col, y_col]) or x_col.lower() not in sql_query or y_col.lower() not in sql_query:
+            print(f"⚠️ ADVERTENCIA: Plan incoherente. El gráfico pedía '{x_col}' y '{y_col}', pero no están en el SQL. Descartando el gráfico.")
             plan["plot_info"] = None
-        # Regla 2: Si las columnas del gráfico no están en el SQL, se descarta.
-        elif x_col.lower() not in sql_query or y_col.lower() not in sql_query:
-            print(f"⚠️ SUPERVISOR: Plan incoherente. Columnas del gráfico ('{x_col}', '{y_col}') no están en el SQL. Descartando.")
-            plan["plot_info"] = None
-    # --- FIN DEL SUPERVISOR ---
-
     return {"plan": plan}
-
 
 def execute_sql_node(state: GraphState):
     """Ejecuta el SQL del plan."""

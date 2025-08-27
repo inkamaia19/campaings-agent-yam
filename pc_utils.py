@@ -5,15 +5,23 @@ import os
 import matplotlib.pyplot as plt
 
 def execute_sql_query(sql_query: str) -> pd.DataFrame:
-    """Se conecta a NeonDB, ejecuta SQL y devuelve un DataFrame."""
+    """Se conecta a NeonDB, ejecuta SQL, limpia duplicados y devuelve un DataFrame."""
     conn = None
     try:
         print(f"\n🔌 Connecting to NeonDB...")
         conn = psycopg2.connect(settings.DATABASE_URI)
         print(f"Executing query on NeonDB:\n---\n{sql_query}\n---")
         df = pd.read_sql_query(sql_query, conn)
+        
+        # Capa de protección para limpiar columnas duplicadas
+        cols = pd.Series(df.columns)
+        for dup in cols[cols.duplicated()].unique(): 
+            dup_cols = [i for i, v in enumerate(cols) if v == dup]
+            df = df.drop(df.columns[dup_cols[1:]], axis=1)
+        
         print("✅ Query executed successfully.")
         return df
+
     except Exception as e:
         print(f"❌ An error occurred while executing SQL query: {e}")
         return pd.DataFrame()
@@ -21,8 +29,6 @@ def execute_sql_query(sql_query: str) -> pd.DataFrame:
         if conn is not None:
             conn.close()
             print("🔌 Connection closed.")
-
-# --- LÓGICA DE CÁLCULO DE MÉTRICAS REFACTORIZADA ---
 
 def _calculate_ctr(row):
     """Calcula el CTR (Click-Through Rate) para una fila de datos."""

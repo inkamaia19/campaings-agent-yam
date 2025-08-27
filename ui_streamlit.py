@@ -23,7 +23,7 @@ for message in st.session_state.messages:
         if "calculation_log" in content_dict and content_dict["calculation_log"]:
             with container.expander("Ver Fórmulas Utilizadas (Transparencia)"):
                 for formula in content_dict["calculation_log"]:
-                    st.code(formula, language="python")
+                    st.code(formula, language="markdown")
 
         if "plot_path" in content_dict and content_dict["plot_path"]:
             container.image(content_dict["plot_path"])
@@ -37,7 +37,7 @@ if prompt := st.chat_input("Pregunta sobre tendencias, comparaciones, etc."):
     st.session_state.messages.append({"role": "user", "content": user_content})
 
     with st.chat_message("assistant"):
-        with st.spinner("El agente está planificando y ejecutando..."):
+        with st.spinner("El agente está pensando, analizando y dibujando..."):
             result_dict = run_agent(prompt)
             response_container = st.container()
             
@@ -57,7 +57,7 @@ if prompt := st.chat_input("Pregunta sobre tendencias, comparaciones, etc."):
                 if calculation_log_result:
                     with response_container.expander("Ver Fórmulas Utilizadas (Transparencia)"):
                         for formula in calculation_log_result:
-                            st.code(formula, language="python")
+                            st.code(formula, language="markdown")
 
                 if plot_path_result:
                     response_container.image(plot_path_result)
